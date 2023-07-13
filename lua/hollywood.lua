@@ -65,7 +65,11 @@ end
 local CodeAction = Action:extend("Hollywood.CodeAction")
 
 function CodeAction:execute()
-	vim.lsp.util.apply_workspace_edit(self.edit, "utf-8")
+	if self.edit then
+		vim.lsp.util.apply_workspace_edit(self.edit, "utf-8")
+	elseif self.data then
+		vim.lsp.util.apply_text_edits(self.edit, vim.api.nvim_get_current_buf(), "utf-8")
+	end
 end
 
 ---@class Hollywood.Command : Hollywood.Action
@@ -112,6 +116,8 @@ function Context:make_params(winnr, bufnr, line)
 	local ctx = {}
 	ctx.diagnostics = vim.diagnostic.get(bufnr, { line = line })
 	local params = vim.lsp.util.make_range_params(winnr)
+	-- local cursor = vim.api.nvim_win_get_cursor(winnr)
+	-- params = vim.lsp.util.make_given_range_params(cursor, cursor, bufnr)
 	params.context = ctx
 	return params
 end
@@ -133,14 +139,18 @@ function Context:fetch(background)
 		for client_id, actions in pairs(data) do
 			local client = vim.lsp.get_client_by_id(client_id)
 
-			if actions.result then
+			if client.name == "rust_analyzer" then
+				vim.print(actions)
+			end
+			if actions.result and #actions.result > 0 then
 				for _, action in ipairs(actions.result) do
-					if action.edit then
+					if action.edit or action.data then
 						self:cache_save(CodeAction:new({
 							title = action.title,
 							type = action.kind,
 							source = client.name,
 							edit = action.edit,
+							data = action.data,
 						}))
 					elseif action.command then
 						self:cache_save(Command:new({
@@ -249,13 +259,13 @@ function Context:show()
 	local layout = Layout(
 		vim.tbl_deep_extend("force", M.config.layout, {
 			size = {
-				height = "35%",
+				height = "40%",
 				width = "30%",
 			},
 			min_height = 15,
 		}),
 		Layout.Box({
-			Layout.Box(nui_select, { grow = 0.9, max_height = 3 }),
+			Layout.Box(nui_select, { grow = 1, min_height = 2, max_height = 3 }),
 			Layout.Box(nui_info, { size = { height = 5 }, min_height = 3, max_height = 3 }),
 			Layout.Box(nui_preview, { size = "50%" }),
 		}, { dir = M.config.dir })
@@ -296,7 +306,7 @@ M.config = {
 	select = {
 		border = {
 			style = "rounded",
-			padding = { 0, 1 },
+			padding = { 0, 0 },
 		},
 		win_options = {
 			scrolloff = 0,
